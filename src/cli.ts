@@ -2,7 +2,7 @@
 import { resolvePaths } from "./paths";
 import { sync, status, formatActions } from "./sync";
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 
 function printHelp(): void {
   console.log(`syncskills v${VERSION}
@@ -46,8 +46,10 @@ What it does:
   3. Writes Claude CLAUDE.md pointing at ~/.agents/AGENTS.md
   4. Writes AGENTS.md stubs for Codex / Antigravity / Aside profiles
   5. Symlinks ~/.claude/skills -> ~/.agents/skills when missing
-  6. ONE-WAY links each agents skill into other hubs when missing
-  7. Leaves target custom skills untouched (never pulls them into agents)
+  6. ONE-WAY: symlink agents skills into Codex/Antigravity when missing
+  7. ONE-WAY: copy agents skills into Aside user dirs (Aside does not load skill symlinks well)
+  8. Leaves target custom real dirs untouched; never pulls them into agents
+  9. Materializes agents skills to real directories (heals broken/cyclic links)
 `);
 }
 

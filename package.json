@@ -1,6 +1,6 @@
 {
   "name": "agentskillsync",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Sync ~/.agents skills (source of truth) one-way into Claude Code, Codex, Antigravity, Aside, and other harnesses",
   "type": "module",
   "bin": {

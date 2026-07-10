@@ -12,6 +12,7 @@ import {
   linkIfMissing,
   linkMissingSkills,
   copyMissingSkills,
+  materializeSkillsHub,
   listSkillNames,
   describeLink,
   pathExists,
@@ -32,11 +33,7 @@ export type SyncResult = {
 };
 
 /**
- * Bootstrap ~/.agents when missing, using ~/.claude as seed:
- * - copy CLAUDE.md -> AGENTS.md if agents root file is missing
- * - copy missing skills from claude/skills into agents/skills
- *
- * ~/.agents is the source of truth after bootstrap.
+ * Bootstrap ~/.agents when missing, using ~/.claude as seed.
  */
 async function bootstrapAgentsFromClaude(
   paths: Paths,
@@ -56,7 +53,6 @@ async function bootstrapAgentsFromClaude(
       const content = (await readTextFile(claudeMd)) ?? "";
       actions.push(await writeTextFile(rootAgentsMd, content, dryRun));
     } else {
-      // Minimal seed so sync can proceed
       actions.push(
         await writeTextFile(
           rootAgentsMd,
@@ -67,28 +63,15 @@ async function bootstrapAgentsFromClaude(
     }
   }
 
-  // Only seed skills when claude has a real skills tree that isn't already agents
   if (await pathExists(claudeSkills)) {
     const claudeDesc = await describeLink(claudeSkills);
-    const alreadyPointsAtAgents =
-      claudeDesc === `symlink -> ${agentsSkills}` ||
-      claudeDesc.startsWith("symlink ->") &&
-        (await pathExists(agentsSkills)) &&
-        (await listSkillNames(agentsSkills)).length > 0 &&
-        claudeDesc.includes(".agents/skills");
-
-    const agentsCount = (await listSkillNames(agentsSkills)).length;
-    if (!alreadyPointsAtAgents || agentsCount === 0) {
-      // If claude/skills is a symlink to agents, copyMissingSkills is a no-op
-      // for empty cases; if it's a real dir with skills, seed agents.
-      if (!claudeDesc.startsWith("symlink ->") || agentsCount === 0) {
-        // When claude is a symlink into agents already, skip copy.
-        if (!claudeDesc.startsWith("symlink ->")) {
-          actions.push(
-            ...(await copyMissingSkills(claudeSkills, agentsSkills, dryRun)),
-          );
-        }
-      }
+    // Only copy when claude has a real skills tree (not a symlink into agents)
+    if (!claudeDesc.startsWith("symlink ->")) {
+      actions.push(
+        ...(await copyMissingSkills(claudeSkills, agentsSkills, dryRun, {
+          replaceSymlinks: false,
+        })),
+      );
     }
   }
 
@@ -100,7 +83,6 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
   const paths = options.paths ?? resolvePaths();
   const actions: Action[] = [];
 
-  // Bootstrap ~/.agents from ~/.claude when needed
   actions.push(...(await bootstrapAgentsFromClaude(paths, dryRun)));
 
   const rootAgentsMd = agentsMdPath(paths.agentsDir);
@@ -116,9 +98,12 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
   const antigravityCliSkills = skillsDir(paths.antigravityCliDir);
   const asideUserSkills = paths.asideUserSkillDirs;
 
-  // Ensure destination skill roots exist
+  actions.push(await ensureDir(agentsSkills, dryRun));
+
+  // Heal source hub: agents must own real skill directories (no chains/cycles)
+  actions.push(...(await materializeSkillsHub(agentsSkills, dryRun)));
+
   for (const dir of [
-    agentsSkills,
     codexSkills,
     antigravitySkills,
     antigravityCliSkills,
@@ -127,7 +112,6 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     actions.push(await ensureDir(dir, dryRun));
   }
 
-  // Claude instruction file + whole skills dir link to agents
   actions.push(await ensureDir(paths.claudeDir, dryRun));
   actions.push(
     await writeTextFile(
@@ -137,7 +121,6 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     ),
   );
 
-  // AGENTS.md stubs for non-agents harness roots
   for (const root of [
     paths.codexDir,
     paths.antigravityDir,
@@ -159,26 +142,27 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     }
   }
 
-  // Prefer single Claude skills hub -> agents
   actions.push(
-    await linkIfMissing(
+    ...(await linkIfMissing(
       skillsDir(paths.claudeDir),
       agentsSkills,
       dryRun,
-    ),
+    )),
   );
 
-  // ONE-WAY: agents is source of truth -> push into destinations only.
-  // Custom skills already present on a target are left untouched.
-  const destinations = [
-    codexSkills,
-    antigravitySkills,
-    antigravityCliSkills,
-    ...asideUserSkills,
-  ];
-
-  for (const dst of destinations) {
+  // Symlink-friendly harnesses
+  for (const dst of [codexSkills, antigravitySkills, antigravityCliSkills]) {
     actions.push(...(await linkMissingSkills(agentsSkills, dst, dryRun)));
+  }
+
+  // Aside: copy real skill trees (many Electron apps don't load skill symlinks)
+  // Existing real custom dirs are left untouched; prior symlinks from us are replaced.
+  for (const dst of asideUserSkills) {
+    actions.push(
+      ...(await copyMissingSkills(agentsSkills, dst, dryRun, {
+        replaceSymlinks: true,
+      })),
+    );
   }
 
   return { actions, paths };
@@ -258,6 +242,9 @@ export function formatActions(actions: Action[], verbose = false): string[] {
         break;
       case "copy":
         lines.push(`copy ${a.from} -> ${a.path}`);
+        break;
+      case "materialize":
+        lines.push(`materialize ${a.path} <- ${a.from}`);
         break;
       case "remove":
         lines.push(`remove ${a.path}`);
