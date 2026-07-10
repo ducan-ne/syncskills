@@ -2,7 +2,7 @@
 import { resolvePaths } from "./paths";
 import { sync, status, formatActions } from "./sync";
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 function printHelp(): void {
   console.log(`syncskills v${VERSION}

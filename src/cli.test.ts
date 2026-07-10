@@ -5,13 +5,14 @@ import {
   readFile,
   readlink,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sync, status } from "./sync";
 import type { Paths } from "./paths";
-import { pathExists } from "./fs";
+import { pathExists, linkIfMissing } from "./fs";
 
 let root: string;
 let paths: Paths;
@@ -82,24 +83,33 @@ describe("sync", () => {
     );
     expect(fooInAg).toBe(join(paths.agentsDir, "skills", "foo"));
 
-    // agents skill mirrored into every Aside profile user dir
     for (const aside of paths.asideUserSkillDirs) {
       const fooAside = await readlink(join(aside, "foo"));
       expect(fooAside).toBe(join(paths.agentsDir, "skills", "foo"));
     }
 
-    // Aside-only skill mirrored back into agents hub
     const asideOnly = await readlink(
       join(paths.agentsDir, "skills", "aside-only"),
     );
     expect(asideOnly).toBe(join(paths.asideUserSkillDirs[0]!, "aside-only"));
 
-    // Aside profile AGENTS.md stub
     const asideAgents = await readFile(
       join(root, "aside", "u", "0", "agents", "main", "AGENTS.md"),
       "utf8",
     );
     expect(asideAgents.trim()).toBe("@~/.agents/AGENTS.md");
+  });
+
+  test("skips dangling symlinks instead of throwing EEXIST", async () => {
+    const hub = join(paths.agentsDir, "skills");
+    await symlink(join(hub, "missing-target"), join(hub, "dangling"));
+    expect(await pathExists(join(hub, "dangling"))).toBe(true);
+    const action = await linkIfMissing(
+      join(hub, "dangling"),
+      join(hub, "other"),
+      false,
+    );
+    expect(action.type).toBe("skip");
   });
 
   test("dry-run does not write files", async () => {

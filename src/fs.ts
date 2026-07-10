@@ -6,9 +6,7 @@ import {
   symlink,
   writeFile,
   readFile,
-  access,
 } from "node:fs/promises";
-import { constants } from "node:fs";
 import { join } from "node:path";
 
 export type Action =
@@ -24,9 +22,10 @@ export async function ensureDir(path: string, dryRun: boolean): Promise<Action> 
   return { type: "mkdir", path };
 }
 
+/** True if a path exists at the final name, including dangling symlinks. */
 export async function pathExists(path: string): Promise<boolean> {
   try {
-    await access(path, constants.F_OK);
+    await lstat(path);
     return true;
   } catch {
     return false;
@@ -55,8 +54,8 @@ export async function writeTextFile(
 }
 
 /**
- * Create a symlink at `linkPath` pointing to `target` if nothing exists there.
- * Does not replace existing files/dirs/symlinks.
+ * Create a symlink at `linkPath` pointing to `target` if nothing exists there
+ * (including dangling symlinks). Does not replace existing entries.
  */
 export async function linkIfMissing(
   linkPath: string,
@@ -67,7 +66,18 @@ export async function linkIfMissing(
     return { type: "skip", path: linkPath, reason: "already exists" };
   }
   if (!dryRun) {
-    await symlink(target, linkPath);
+    try {
+      await symlink(target, linkPath);
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code)
+          : "";
+      if (code === "EEXIST") {
+        return { type: "skip", path: linkPath, reason: "already exists" };
+      }
+      throw err;
+    }
   }
   return { type: "link", path: linkPath, target, created: true };
 }
