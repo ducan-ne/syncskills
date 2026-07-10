@@ -10,7 +10,7 @@ function printHelp(): void {
 Sync skills from ~/.agents (source of truth) into harness dirs that do
 not natively read ~/.agents (Claude Code, Codex, Antigravity, Aside, …).
 
-Package: syncagents  |  commands: syncagents, syncskills
+Package: agentskillsync  |  commands: agentskillsync, syncskills
 
 Usage:
   syncskills [sync] [options]

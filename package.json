@@ -1,10 +1,10 @@
 {
-  "name": "syncagents",
+  "name": "agentskillsync",
   "version": "0.2.0",
   "description": "Sync ~/.agents skills (source of truth) one-way into Claude Code, Codex, Antigravity, Aside, and other harnesses",
   "type": "module",
   "bin": {
-    "syncagents": "dist/cli.js",
+    "agentskillsync": "dist/cli.js",
     "syncskills": "dist/cli.js"
   },
   "files": [
