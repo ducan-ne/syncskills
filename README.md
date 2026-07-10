@@ -5,9 +5,9 @@ CLI to sync `~/.agents` skills and root `AGENTS.md` into harness directories tha
 ## Install
 
 ```bash
-npm i -g syncskills
+npm i -g @solim/syncskills
 # or
-bun add -g syncskills
+bun add -g @solim/syncskills
 ```
 
 ## Usage
