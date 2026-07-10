@@ -1,32 +1,32 @@
-# agentskills
+# syncagents
 
 One-way sync: **`~/.agents` is the source of truth**. Push skills into harnesses that do not natively read `~/.agents` (Claude Code, Codex, Antigravity, Aside).
 
 Target-only custom skills (for example Aside user skills) are left untouched and never pulled into `~/.agents`.
 
-## Install / run
+## Run
 
 ```bash
-# one-shot
-npx agentskills
+npx syncagents
+```
 
-# global
-npm i -g agentskills
+## Install
+
+```bash
+npm i -g syncagents
+syncagents
+# alias also available:
 syncskills
-# or
-agentskills
 ```
 
 ## Usage
 
 ```bash
-syncskills              # push agents skills one-way
-syncskills --dry-run    # plan only
-syncskills status
-syncskills status -v
+syncagents              # push agents skills one-way
+syncagents --dry-run    # plan only
+syncagents status
+syncagents status -v
 ```
-
-`agentskills` is the same binary.
 
 ## Behavior
 

@@ -1,10 +1,10 @@
 {
-  "name": "agentskills",
+  "name": "syncagents",
   "version": "0.2.0",
-  "description": "One-way sync of ~/.agents skills (source of truth) into Claude Code, Codex, Antigravity, Aside, and other harnesses",
+  "description": "Sync ~/.agents skills (source of truth) one-way into Claude Code, Codex, Antigravity, Aside, and other harnesses",
   "type": "module",
   "bin": {
-    "agentskills": "dist/cli.js",
+    "syncagents": "dist/cli.js",
     "syncskills": "dist/cli.js"
   },
   "files": [
@@ -19,6 +19,7 @@
     "prepublishOnly": "bun run test && bun run build"
   },
   "keywords": [
+    "sync",
     "agents",
     "skills",
     "claude",
@@ -26,7 +27,6 @@
     "antigravity",
     "aside",
     "cli",
-    "sync",
     "symlink",
     "agents.md"
   ],
