@@ -1,7 +1,7 @@
 {
   "name": "@solim/syncskills",
-  "version": "0.1.4",
-  "description": "Sync ~/.agents skills and root AGENTS.md across AI harnesses that do not support ~/.agents (Claude Code, Codex, Antigravity, Aside, etc.)",
+  "version": "0.2.0",
+  "description": "One-way sync of ~/.agents skills (source of truth) into Claude Code, Codex, Antigravity, Aside, and other harnesses",
   "type": "module",
   "bin": {
     "syncskills": "dist/cli.js"

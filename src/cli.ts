@@ -2,13 +2,13 @@
 import { resolvePaths } from "./paths";
 import { sync, status, formatActions } from "./sync";
 
-const VERSION = "0.1.4";
+const VERSION = "0.2.0";
 
 function printHelp(): void {
   console.log(`syncskills v${VERSION}
 
-Sync ~/.agents skills + root AGENTS.md into harness dirs that do not
-read ~/.agents natively (Claude Code, Codex, Antigravity, Aside, etc.).
+Sync skills from ~/.agents (source of truth) into harness dirs that do
+not natively read ~/.agents (Claude Code, Codex, Antigravity, Aside, …).
 
 Usage:
   syncskills [sync] [options]
@@ -17,7 +17,7 @@ Usage:
   syncskills version
 
 Commands:
-  sync      Mirror skills + write AGENTS.md / CLAUDE.md stubs (default)
+  sync      Push agents skills + write AGENTS.md / CLAUDE.md stubs (default)
   status    Show current hubs, skill counts, and link state
   help      Show this help
   version   Print version
@@ -29,24 +29,23 @@ Options:
   --version       Show version
 
 Environment:
-  AGENTS_DIR              default: ~/.agents
-  CLAUDE_DIR              default: ~/.claude
+  AGENTS_DIR              default: ~/.agents   (source of truth)
+  CLAUDE_DIR              default: ~/.claude   (bootstrap seed if agents missing)
   CODEX_DIR               default: ~/.codex
   ANTIGRAVITY_DIR         default: ~/.gemini/antigravity
   ANTIGRAVITY_CLI_DIR     default: ~/.gemini/antigravity-cli
   ASIDE_DIR               default: ~/.aside
   ASIDE_USER_SKILLS_DIRS  colon-separated override for Aside user skill hubs
                           default: ~/.aside/u/<id>/agents/main/skills/user
-                          (discovered across all numeric profiles)
 
 What it does:
-  1. Requires $AGENTS_DIR/AGENTS.md (source of truth)
-  2. Writes Claude CLAUDE.md pointing at ~/.agents/AGENTS.md
-  3. Writes AGENTS.md stubs for Codex / Antigravity / Antigravity CLI
-  4. Writes AGENTS.md stubs for each Aside profile agents/main
+  1. Treats $AGENTS_DIR as the only source of truth
+  2. If agents is missing, bootstraps from ~/.claude (AGENTS.md + skills)
+  3. Writes Claude CLAUDE.md pointing at ~/.agents/AGENTS.md
+  4. Writes AGENTS.md stubs for Codex / Antigravity / Aside profiles
   5. Symlinks ~/.claude/skills -> ~/.agents/skills when missing
-  6. Symlinks missing skill folders across agents/codex/antigravity hubs
-  7. Mirrors skills into each Aside profile skills/user (and back)
+  6. ONE-WAY links each agents skill into other hubs when missing
+  7. Leaves target custom skills untouched (never pulls them into agents)
 `);
 }
 
@@ -118,8 +117,8 @@ async function main() {
     }
     console.log(
       dryRun
-        ? "\nWould sync global .agents <-> Claude/Codex/Antigravity/Aside."
-        : "\nGlobal .agents <-> Claude Code/Codex/Antigravity/Aside compatibility synced.",
+        ? "\nWould push ~/.agents skills one-way into Claude/Codex/Antigravity/Aside."
+        : "\nPushed ~/.agents skills one-way into Claude/Codex/Antigravity/Aside.",
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

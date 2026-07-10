@@ -11,10 +11,12 @@ import {
   ensureDir,
   linkIfMissing,
   linkMissingSkills,
+  copyMissingSkills,
   listSkillNames,
   describeLink,
   pathExists,
   writeTextFile,
+  readTextFile,
   type Action,
 } from "./fs";
 
@@ -29,14 +31,83 @@ export type SyncResult = {
   paths: Paths;
 };
 
+/**
+ * Bootstrap ~/.agents when missing, using ~/.claude as seed:
+ * - copy CLAUDE.md -> AGENTS.md if agents root file is missing
+ * - copy missing skills from claude/skills into agents/skills
+ *
+ * ~/.agents is the source of truth after bootstrap.
+ */
+async function bootstrapAgentsFromClaude(
+  paths: Paths,
+  dryRun: boolean,
+): Promise<Action[]> {
+  const actions: Action[] = [];
+  const agentsSkills = skillsDir(paths.agentsDir);
+  const claudeSkills = skillsDir(paths.claudeDir);
+  const rootAgentsMd = agentsMdPath(paths.agentsDir);
+  const claudeMd = claudeMdPath(paths.claudeDir);
+
+  actions.push(await ensureDir(paths.agentsDir, dryRun));
+  actions.push(await ensureDir(agentsSkills, dryRun));
+
+  if (!(await pathExists(rootAgentsMd))) {
+    if (await pathExists(claudeMd)) {
+      const content = (await readTextFile(claudeMd)) ?? "";
+      actions.push(await writeTextFile(rootAgentsMd, content, dryRun));
+    } else {
+      // Minimal seed so sync can proceed
+      actions.push(
+        await writeTextFile(
+          rootAgentsMd,
+          "# Agents\n\nGlobal agent instructions.\n",
+          dryRun,
+        ),
+      );
+    }
+  }
+
+  // Only seed skills when claude has a real skills tree that isn't already agents
+  if (await pathExists(claudeSkills)) {
+    const claudeDesc = await describeLink(claudeSkills);
+    const alreadyPointsAtAgents =
+      claudeDesc === `symlink -> ${agentsSkills}` ||
+      claudeDesc.startsWith("symlink ->") &&
+        (await pathExists(agentsSkills)) &&
+        (await listSkillNames(agentsSkills)).length > 0 &&
+        claudeDesc.includes(".agents/skills");
+
+    const agentsCount = (await listSkillNames(agentsSkills)).length;
+    if (!alreadyPointsAtAgents || agentsCount === 0) {
+      // If claude/skills is a symlink to agents, copyMissingSkills is a no-op
+      // for empty cases; if it's a real dir with skills, seed agents.
+      if (!claudeDesc.startsWith("symlink ->") || agentsCount === 0) {
+        // When claude is a symlink into agents already, skip copy.
+        if (!claudeDesc.startsWith("symlink ->")) {
+          actions.push(
+            ...(await copyMissingSkills(claudeSkills, agentsSkills, dryRun)),
+          );
+        }
+      }
+    }
+  }
+
+  return actions;
+}
+
 export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
   const dryRun = options.dryRun ?? false;
   const paths = options.paths ?? resolvePaths();
   const actions: Action[] = [];
 
+  // Bootstrap ~/.agents from ~/.claude when needed
+  actions.push(...(await bootstrapAgentsFromClaude(paths, dryRun)));
+
   const rootAgentsMd = agentsMdPath(paths.agentsDir);
   if (!(await pathExists(rootAgentsMd))) {
-    throw new Error(`missing ${rootAgentsMd}`);
+    throw new Error(
+      `missing ${rootAgentsMd} (could not bootstrap from ${paths.claudeDir})`,
+    );
   }
 
   const agentsSkills = skillsDir(paths.agentsDir);
@@ -45,6 +116,7 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
   const antigravityCliSkills = skillsDir(paths.antigravityCliDir);
   const asideUserSkills = paths.asideUserSkillDirs;
 
+  // Ensure destination skill roots exist
   for (const dir of [
     agentsSkills,
     codexSkills,
@@ -55,6 +127,7 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     actions.push(await ensureDir(dir, dryRun));
   }
 
+  // Claude instruction file + whole skills dir link to agents
   actions.push(await ensureDir(paths.claudeDir, dryRun));
   actions.push(
     await writeTextFile(
@@ -64,6 +137,7 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     ),
   );
 
+  // AGENTS.md stubs for non-agents harness roots
   for (const root of [
     paths.codexDir,
     paths.antigravityDir,
@@ -75,9 +149,7 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     );
   }
 
-  // Aside per-profile AGENTS.md under agents/main when that tree exists
   for (const userSkills of asideUserSkills) {
-    // .../skills/user -> .../agents/main
     const mainDir = userSkills.replace(/\/skills\/user\/?$/, "");
     if (mainDir !== userSkills) {
       actions.push(await ensureDir(mainDir, dryRun));
@@ -87,6 +159,7 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     }
   }
 
+  // Prefer single Claude skills hub -> agents
   actions.push(
     await linkIfMissing(
       skillsDir(paths.claudeDir),
@@ -95,39 +168,17 @@ export async function sync(options: SyncOptions = {}): Promise<SyncResult> {
     ),
   );
 
-  // agents <-> codex
-  actions.push(...(await linkMissingSkills(codexSkills, agentsSkills, dryRun)));
-  actions.push(...(await linkMissingSkills(agentsSkills, codexSkills, dryRun)));
-  // agents/codex -> antigravity
-  actions.push(
-    ...(await linkMissingSkills(agentsSkills, antigravitySkills, dryRun)),
-  );
-  actions.push(
-    ...(await linkMissingSkills(codexSkills, antigravitySkills, dryRun)),
-  );
-  // agents/codex -> antigravity-cli
-  actions.push(
-    ...(await linkMissingSkills(agentsSkills, antigravityCliSkills, dryRun)),
-  );
-  actions.push(
-    ...(await linkMissingSkills(codexSkills, antigravityCliSkills, dryRun)),
-  );
+  // ONE-WAY: agents is source of truth -> push into destinations only.
+  // Custom skills already present on a target are left untouched.
+  const destinations = [
+    codexSkills,
+    antigravitySkills,
+    antigravityCliSkills,
+    ...asideUserSkills,
+  ];
 
-  // agents/codex <-> each Aside profile user skills dir
-  for (const asideSkills of asideUserSkills) {
-    actions.push(
-      ...(await linkMissingSkills(agentsSkills, asideSkills, dryRun)),
-    );
-    actions.push(
-      ...(await linkMissingSkills(codexSkills, asideSkills, dryRun)),
-    );
-    // bring Aside-only user skills back into the shared hubs
-    actions.push(
-      ...(await linkMissingSkills(asideSkills, agentsSkills, dryRun)),
-    );
-    actions.push(
-      ...(await linkMissingSkills(asideSkills, codexSkills, dryRun)),
-    );
+  for (const dst of destinations) {
+    actions.push(...(await linkMissingSkills(agentsSkills, dst, dryRun)));
   }
 
   return { actions, paths };
@@ -152,7 +203,7 @@ export async function status(options: SyncOptions = {}): Promise<StatusReport> {
   const claudeMd = claudeMdPath(paths.claudeDir);
 
   const hubsSpec: Array<{ name: string; dir: string }> = [
-    { name: "agents", dir: skillsDir(paths.agentsDir) },
+    { name: "agents (source)", dir: skillsDir(paths.agentsDir) },
     { name: "claude", dir: skillsDir(paths.claudeDir) },
     { name: "codex", dir: skillsDir(paths.codexDir) },
     { name: "antigravity", dir: skillsDir(paths.antigravityDir) },
@@ -160,7 +211,6 @@ export async function status(options: SyncOptions = {}): Promise<StatusReport> {
   ];
 
   for (const dir of paths.asideUserSkillDirs) {
-    // label with profile id when path matches u/<id>/...
     const m = dir.match(/\/u\/(\d+)\/agents\/main\/skills\/user\/?$/);
     const name = m ? `aside-u${m[1]}-user` : `aside-user:${dir}`;
     hubsSpec.push({ name, dir });
@@ -205,6 +255,12 @@ export function formatActions(actions: Action[], verbose = false): string[] {
         break;
       case "link":
         if (a.created) lines.push(`linked ${a.path} -> ${a.target}`);
+        break;
+      case "copy":
+        lines.push(`copy ${a.from} -> ${a.path}`);
+        break;
+      case "remove":
+        lines.push(`remove ${a.path}`);
         break;
       case "skip":
         if (verbose) lines.push(`skip ${a.path} (${a.reason})`);

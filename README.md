@@ -1,6 +1,8 @@
 # syncskills
 
-CLI to sync `~/.agents` skills and root `AGENTS.md` into harness directories that do not natively read `~/.agents` (Claude Code, Codex, Antigravity, Antigravity CLI, Aside).
+One-way CLI sync: **`~/.agents` is the source of truth**. Skills are pushed into harness directories that do not natively read `~/.agents` (Claude Code, Codex, Antigravity, Aside).
+
+Custom skills that already exist on a target (for example Aside user skills) are **left untouched** and are **never pulled into** `~/.agents`.
 
 ## Install
 
@@ -8,47 +10,35 @@ CLI to sync `~/.agents` skills and root `AGENTS.md` into harness directories tha
 npm i -g @solim/syncskills
 # or from a local checkout
 npm link
-# or
-bun add -g @solim/syncskills
 ```
 
-The binary name is `syncskills`.
+Binary name: `syncskills`.
 
 ## Usage
 
 ```bash
-# mirror skills + write AGENTS.md / CLAUDE.md stubs
-syncskills
-
-# same as above
-syncskills sync
-
-# plan only
-syncskills --dry-run
-
-# inspect hubs
+syncskills              # push agents skills one-way
+syncskills --dry-run    # plan only
 syncskills status
-syncskills status --verbose
+syncskills status -v
 ```
 
-## What it does
+## Behavior
 
-1. Requires `$AGENTS_DIR/AGENTS.md` (default `~/.agents/AGENTS.md`) as source of truth
-2. Writes `~/.claude/CLAUDE.md` pointing at `~/.agents/AGENTS.md` (+ Claude RTK include)
-3. Writes `AGENTS.md` stubs for Codex / Antigravity / Antigravity CLI
-4. Writes `AGENTS.md` stubs for each Aside profile `agents/main`
-5. Symlinks `~/.claude/skills` → `~/.agents/skills` when missing
-6. Symlinks missing skill folders bidirectionally across agents / codex / antigravity hubs
-7. Mirrors skills into each Aside profile `skills/user` (and mirrors Aside user skills back)
+1. **Source of truth:** `$AGENTS_DIR` (default `~/.agents`)
+2. **Bootstrap:** if agents is missing, seed `AGENTS.md` + skills from `~/.claude`
+3. Write `~/.claude/CLAUDE.md` pointing at `~/.agents/AGENTS.md`
+4. Write `AGENTS.md` stubs for Codex / Antigravity / Aside profiles
+5. Symlink `~/.claude/skills` → `~/.agents/skills` when missing
+6. **One-way** link each agents skill into other hubs when that name is missing
+7. Destination-only customs stay on the destination only
 
-Skill folders whose names start with `.` (for example Codex `.system`) are skipped.
-
-## Environment overrides
+## Environment
 
 | Variable | Default |
 | --- | --- |
-| `AGENTS_DIR` | `~/.agents` |
-| `CLAUDE_DIR` | `~/.claude` |
+| `AGENTS_DIR` | `~/.agents` (source) |
+| `CLAUDE_DIR` | `~/.claude` (bootstrap seed) |
 | `CODEX_DIR` | `~/.codex` |
 | `ANTIGRAVITY_DIR` | `~/.gemini/antigravity` |
 | `ANTIGRAVITY_CLI_DIR` | `~/.gemini/antigravity-cli` |
@@ -62,7 +52,6 @@ bun install
 bun test
 bun run build
 bun run src/cli.ts status
-npm link   # expose syncskills on your PATH from this checkout
 ```
 
 ## License

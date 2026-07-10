@@ -1,4 +1,5 @@
 import {
+  cp,
   mkdir,
   readdir,
   readlink,
@@ -6,6 +7,7 @@ import {
   symlink,
   writeFile,
   readFile,
+  rm,
 } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -13,6 +15,8 @@ export type Action =
   | { type: "mkdir"; path: string }
   | { type: "write"; path: string; content: string; changed: boolean }
   | { type: "link"; path: string; target: string; created: boolean }
+  | { type: "copy"; path: string; from: string }
+  | { type: "remove"; path: string }
   | { type: "skip"; path: string; reason: string };
 
 export async function ensureDir(path: string, dryRun: boolean): Promise<Action> {
@@ -83,9 +87,9 @@ export async function linkIfMissing(
 }
 
 /**
- * For each skill directory in srcDir, symlink into dstDir when missing.
+ * One-way: for each skill in srcDir, symlink into dstDir when missing.
+ * Existing destination entries (custom skills, etc.) are left untouched.
  * Skips names starting with "." (e.g. .system).
- * Allows skill entries that are directories or symlinks (common shared pattern).
  */
 export async function linkMissingSkills(
   srcDir: string,
@@ -115,6 +119,59 @@ export async function linkMissingSkills(
     actions.push(await linkIfMissing(target, skill, dryRun));
   }
   return actions;
+}
+
+/**
+ * Copy skill entries from srcDir into dstDir when missing.
+ * Used only to bootstrap ~/.agents from ~/.claude.
+ * Existing destination entries are left untouched.
+ */
+export async function copyMissingSkills(
+  srcDir: string,
+  dstDir: string,
+  dryRun: boolean,
+): Promise<Action[]> {
+  const actions: Action[] = [];
+  let entries: string[];
+  try {
+    entries = await readdir(srcDir);
+  } catch {
+    return actions;
+  }
+
+  for (const name of entries) {
+    if (name.startsWith(".")) continue;
+    const src = join(srcDir, name);
+    const dst = join(dstDir, name);
+    let st;
+    try {
+      st = await lstat(src);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory() && !st.isSymbolicLink()) continue;
+    if (await pathExists(dst)) {
+      actions.push({ type: "skip", path: dst, reason: "already exists" });
+      continue;
+    }
+    if (!dryRun) {
+      // Follow symlinks so agents owns real skill content when bootstrapping
+      await cp(src, dst, { recursive: true, dereference: true });
+    }
+    actions.push({ type: "copy", path: dst, from: src });
+  }
+  return actions;
+}
+
+export async function removePath(
+  path: string,
+  dryRun: boolean,
+): Promise<Action | null> {
+  if (!(await pathExists(path))) return null;
+  if (!dryRun) {
+    await rm(path, { recursive: true, force: true });
+  }
+  return { type: "remove", path };
 }
 
 export async function listSkillNames(dir: string): Promise<string[]> {

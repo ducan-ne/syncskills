@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sync, status } from "./sync";
 import type { Paths } from "./paths";
-import { pathExists, linkIfMissing } from "./fs";
+import { pathExists, linkIfMissing, listSkillNames } from "./fs";
 
 let root: string;
 let paths: Paths;
@@ -49,55 +49,65 @@ afterEach(async () => {
 });
 
 describe("sync", () => {
-  test("writes stubs and links skills across hubs", async () => {
+  test("pushes agents skills one-way and leaves target customs untouched", async () => {
     await touchSkill(join(paths.agentsDir, "skills"), "foo");
     await mkdir(join(paths.codexDir, "skills"), { recursive: true });
-    await touchSkill(join(paths.codexDir, "skills"), "bar");
+    await touchSkill(join(paths.codexDir, "skills"), "codex-only");
     await mkdir(paths.asideUserSkillDirs[0]!, { recursive: true });
     await touchSkill(paths.asideUserSkillDirs[0]!, "aside-only");
 
-    const result = await sync({ paths });
-    expect(result.actions.some((a) => a.type === "write")).toBe(true);
+    await sync({ paths });
+
+    // agents skill linked into destinations
+    expect(await readlink(join(paths.codexDir, "skills", "foo"))).toBe(
+      join(paths.agentsDir, "skills", "foo"),
+    );
+    expect(
+      await readlink(join(paths.asideUserSkillDirs[0]!, "foo")),
+    ).toBe(join(paths.agentsDir, "skills", "foo"));
+
+    // destination-only customs stay put
+    expect(
+      await pathExists(join(paths.codexDir, "skills", "codex-only")),
+    ).toBe(true);
+    expect(
+      await pathExists(join(paths.asideUserSkillDirs[0]!, "aside-only")),
+    ).toBe(true);
+
+    // one-way: not pulled into agents
+    expect(
+      await pathExists(join(paths.agentsDir, "skills", "codex-only")),
+    ).toBe(false);
+    expect(
+      await pathExists(join(paths.agentsDir, "skills", "aside-only")),
+    ).toBe(false);
 
     const claudeMd = await readFile(join(paths.claudeDir, "CLAUDE.md"), "utf8");
     expect(claudeMd).toContain("@~/.agents/AGENTS.md");
-    expect(claudeMd).toContain("@RTK.md");
+  });
 
-    const codexAgents = await readFile(
-      join(paths.codexDir, "AGENTS.md"),
+  test("bootstraps agents from claude when agents is missing", async () => {
+    await rm(paths.agentsDir, { recursive: true, force: true });
+    await mkdir(join(paths.claudeDir, "skills"), { recursive: true });
+    await writeFile(
+      join(paths.claudeDir, "CLAUDE.md"),
+      "# from claude\n",
       "utf8",
     );
-    expect(codexAgents.trim()).toBe("@~/.agents/AGENTS.md");
+    await touchSkill(join(paths.claudeDir, "skills"), "seeded");
 
-    const claudeSkills = await readlink(join(paths.claudeDir, "skills"));
-    expect(claudeSkills).toBe(join(paths.agentsDir, "skills"));
+    await sync({ paths });
 
-    const barLink = await readlink(join(paths.agentsDir, "skills", "bar"));
-    expect(barLink).toBe(join(paths.codexDir, "skills", "bar"));
-
-    const fooInCodex = await readlink(join(paths.codexDir, "skills", "foo"));
-    expect(fooInCodex).toBe(join(paths.agentsDir, "skills", "foo"));
-
-    const fooInAg = await readlink(
-      join(paths.antigravityDir, "skills", "foo"),
+    expect(await pathExists(join(paths.agentsDir, "AGENTS.md"))).toBe(true);
+    const agentsMd = await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8");
+    expect(agentsMd).toContain("from claude");
+    expect(
+      await pathExists(join(paths.agentsDir, "skills", "seeded", "SKILL.md")),
+    ).toBe(true);
+    // agents skill then linked into codex
+    expect(await readlink(join(paths.codexDir, "skills", "seeded"))).toBe(
+      join(paths.agentsDir, "skills", "seeded"),
     );
-    expect(fooInAg).toBe(join(paths.agentsDir, "skills", "foo"));
-
-    for (const aside of paths.asideUserSkillDirs) {
-      const fooAside = await readlink(join(aside, "foo"));
-      expect(fooAside).toBe(join(paths.agentsDir, "skills", "foo"));
-    }
-
-    const asideOnly = await readlink(
-      join(paths.agentsDir, "skills", "aside-only"),
-    );
-    expect(asideOnly).toBe(join(paths.asideUserSkillDirs[0]!, "aside-only"));
-
-    const asideAgents = await readFile(
-      join(root, "aside", "u", "0", "agents", "main", "AGENTS.md"),
-      "utf8",
-    );
-    expect(asideAgents.trim()).toBe("@~/.agents/AGENTS.md");
   });
 
   test("skips dangling symlinks instead of throwing EEXIST", async () => {
@@ -118,18 +128,14 @@ describe("sync", () => {
     expect(await pathExists(join(paths.claudeDir, "CLAUDE.md"))).toBe(false);
   });
 
-  test("errors when root AGENTS.md is missing", async () => {
-    await rm(join(paths.agentsDir, "AGENTS.md"));
-    await expect(sync({ paths })).rejects.toThrow(/missing/);
-  });
-
   test("status reports hubs including aside profiles", async () => {
     await touchSkill(join(paths.agentsDir, "skills"), "foo");
     await sync({ paths });
     const report = await status({ paths });
     expect(report.rootAgentsMd.exists).toBe(true);
-    expect(report.hubs.find((h) => h.name === "agents")?.skillCount).toBe(1);
+    expect(
+      report.hubs.find((h) => h.name === "agents (source)")?.skillCount,
+    ).toBe(1);
     expect(report.hubs.some((h) => h.name === "aside-u0-user")).toBe(true);
-    expect(report.hubs.some((h) => h.name === "aside-u1-user")).toBe(true);
   });
 });
