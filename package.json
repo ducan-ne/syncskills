@@ -1,9 +1,10 @@
 {
-  "name": "@solim/syncskills",
+  "name": "agentskills",
   "version": "0.2.0",
   "description": "One-way sync of ~/.agents skills (source of truth) into Claude Code, Codex, Antigravity, Aside, and other harnesses",
   "type": "module",
   "bin": {
+    "agentskills": "dist/cli.js",
     "syncskills": "dist/cli.js"
   },
   "files": [
@@ -23,9 +24,11 @@
     "claude",
     "codex",
     "antigravity",
+    "aside",
     "cli",
     "sync",
-    "symlink"
+    "symlink",
+    "agents.md"
   ],
   "author": "ducan-ne",
   "license": "MIT",
@@ -43,8 +46,5 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

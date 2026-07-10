@@ -1,18 +1,21 @@
-# syncskills
+# agentskills
 
-One-way CLI sync: **`~/.agents` is the source of truth**. Skills are pushed into harness directories that do not natively read `~/.agents` (Claude Code, Codex, Antigravity, Aside).
+One-way sync: **`~/.agents` is the source of truth**. Push skills into harnesses that do not natively read `~/.agents` (Claude Code, Codex, Antigravity, Aside).
 
-Custom skills that already exist on a target (for example Aside user skills) are **left untouched** and are **never pulled into** `~/.agents`.
+Target-only custom skills (for example Aside user skills) are left untouched and never pulled into `~/.agents`.
 
-## Install
+## Install / run
 
 ```bash
-npm i -g @solim/syncskills
-# or from a local checkout
-npm link
-```
+# one-shot
+npx agentskills
 
-Binary name: `syncskills`.
+# global
+npm i -g agentskills
+syncskills
+# or
+agentskills
+```
 
 ## Usage
 
@@ -22,6 +25,8 @@ syncskills --dry-run    # plan only
 syncskills status
 syncskills status -v
 ```
+
+`agentskills` is the same binary.
 
 ## Behavior
 
