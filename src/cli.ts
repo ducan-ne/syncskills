@@ -2,13 +2,13 @@
 import { resolvePaths } from "./paths";
 import { sync, status, formatActions } from "./sync";
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 
 function printHelp(): void {
   console.log(`syncskills v${VERSION}
 
 Sync ~/.agents skills + root AGENTS.md into harness dirs that do not
-read ~/.agents natively (Claude Code, Codex, Antigravity, etc.).
+read ~/.agents natively (Claude Code, Codex, Antigravity, Aside, etc.).
 
 Usage:
   syncskills [sync] [options]
@@ -29,18 +29,24 @@ Options:
   --version       Show version
 
 Environment:
-  AGENTS_DIR            default: ~/.agents
-  CLAUDE_DIR            default: ~/.claude
-  CODEX_DIR             default: ~/.codex
-  ANTIGRAVITY_DIR       default: ~/.gemini/antigravity
-  ANTIGRAVITY_CLI_DIR   default: ~/.gemini/antigravity-cli
+  AGENTS_DIR              default: ~/.agents
+  CLAUDE_DIR              default: ~/.claude
+  CODEX_DIR               default: ~/.codex
+  ANTIGRAVITY_DIR         default: ~/.gemini/antigravity
+  ANTIGRAVITY_CLI_DIR     default: ~/.gemini/antigravity-cli
+  ASIDE_DIR               default: ~/.aside
+  ASIDE_USER_SKILLS_DIRS  colon-separated override for Aside user skill hubs
+                          default: ~/.aside/u/<id>/agents/main/skills/user
+                          (discovered across all numeric profiles)
 
 What it does:
   1. Requires $AGENTS_DIR/AGENTS.md (source of truth)
   2. Writes Claude CLAUDE.md pointing at ~/.agents/AGENTS.md
   3. Writes AGENTS.md stubs for Codex / Antigravity / Antigravity CLI
-  4. Symlinks ~/.claude/skills -> ~/.agents/skills when missing
-  5. Symlinks missing skill folders across agents/codex/antigravity hubs
+  4. Writes AGENTS.md stubs for each Aside profile agents/main
+  5. Symlinks ~/.claude/skills -> ~/.agents/skills when missing
+  6. Symlinks missing skill folders across agents/codex/antigravity hubs
+  7. Mirrors skills into each Aside profile skills/user (and back)
 `);
 }
 
@@ -112,8 +118,8 @@ async function main() {
     }
     console.log(
       dryRun
-        ? "\nWould sync global .agents <-> Claude/Codex/Antigravity."
-        : "\nGlobal .agents <-> Claude Code/Codex/Antigravity compatibility synced.",
+        ? "\nWould sync global .agents <-> Claude/Codex/Antigravity/Aside."
+        : "\nGlobal .agents <-> Claude Code/Codex/Antigravity/Aside compatibility synced.",
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

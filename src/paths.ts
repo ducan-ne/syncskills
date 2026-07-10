@@ -1,12 +1,6 @@
+import { readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
-export type HarnessId =
-  | "agents"
-  | "claude"
-  | "codex"
-  | "antigravity"
-  | "antigravity-cli";
 
 export type Paths = {
   agentsDir: string;
@@ -14,10 +8,18 @@ export type Paths = {
   codexDir: string;
   antigravityDir: string;
   antigravityCliDir: string;
+  /** Aside root: ~/.aside */
+  asideDir: string;
+  /**
+   * Per-profile Aside user skill hubs:
+   * ~/.aside/u/<id>/agents/main/skills/user
+   */
+  asideUserSkillDirs: string[];
 };
 
 export function resolvePaths(env: NodeJS.ProcessEnv = process.env): Paths {
   const home = env.HOME || env.USERPROFILE || homedir();
+  const asideDir = env.ASIDE_DIR || join(home, ".aside");
   return {
     agentsDir: env.AGENTS_DIR || join(home, ".agents"),
     claudeDir: env.CLAUDE_DIR || join(home, ".claude"),
@@ -25,7 +27,42 @@ export function resolvePaths(env: NodeJS.ProcessEnv = process.env): Paths {
     antigravityDir: env.ANTIGRAVITY_DIR || join(home, ".gemini", "antigravity"),
     antigravityCliDir:
       env.ANTIGRAVITY_CLI_DIR || join(home, ".gemini", "antigravity-cli"),
+    asideDir,
+    asideUserSkillDirs: discoverAsideUserSkillDirs(asideDir, env),
   };
+}
+
+/**
+ * Discover Aside profile user-skill directories.
+ * Default layout: $ASIDE_DIR/u/<profileId>/agents/main/skills/user
+ *
+ * Override with ASIDE_USER_SKILLS_DIRS as a colon-separated list of absolute paths.
+ */
+export function discoverAsideUserSkillDirs(
+  asideDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const override = env.ASIDE_USER_SKILLS_DIRS?.trim();
+  if (override) {
+    return override
+      .split(":")
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }
+
+  const usersRoot = join(asideDir, "u");
+  if (!existsSync(usersRoot)) return [];
+
+  let profileIds: string[];
+  try {
+    profileIds = readdirSync(usersRoot).filter((name) => /^\d+$/.test(name));
+  } catch {
+    return [];
+  }
+
+  return profileIds
+    .sort((a, b) => Number(a) - Number(b))
+    .map((id) => join(usersRoot, id, "agents", "main", "skills", "user"));
 }
 
 export function skillsDir(root: string): string {
